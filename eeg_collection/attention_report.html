@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attention 参数对比报告</title>
+<style>
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#213149;background:#f2f5f9;font-size:15px}*{box-sizing:border-box}body{margin:0}main{max-width:1240px;margin:auto;padding:32px 24px 60px}h1{font-size:32px;letter-spacing:-1px;margin:8px 0 10px}h2{font-size:21px;margin:0 0 10px}p{line-height:1.75;margin:8px 0;color:#53627a}.eyebrow{color:#087f82;font-weight:700;letter-spacing:2px;font-size:12px}.card{background:white;border:1px solid #dfe5ee;border-radius:14px;padding:24px;margin-top:20px}.notice{border-left:4px solid #e3a33a;background:#fffaf0;padding:12px 18px;margin:20px 0;line-height:1.7}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.stat{padding:20px;background:white;border-radius:12px;border:1px solid #dfe5ee}.stat strong{display:block;font-size:25px;margin-top:8px;color:#123f65}.small{font-size:13px;color:#66768b}.controls{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:16px 0}select{font:inherit;border:1px solid #cad4e0;border-radius:7px;padding:8px;background:white;max-width:100%}label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}svg{display:block;width:100%;height:auto}svg text{font-family:inherit;fill:#637188;font-size:12px}svg .axis{stroke:#ccd5df;stroke-width:1}svg .grid{stroke:#e9edf2;stroke-width:1}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:13px}th,td{text-align:right;padding:11px 9px;border-bottom:1px solid #e7ecf2}th:first-child,td:first-child{text-align:left}th{font-weight:600;background:#f8fafc}button{font:inherit;background:#edf6f7;border:1px solid #b7d7d9;color:#076b6e;border-radius:6px;padding:7px;cursor:pointer}.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin:12px 0}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}#selection{padding:10px 14px;background:#f1f7fb;border-radius:8px;line-height:1.7}details{margin-top:14px}summary{cursor:pointer;color:#27608b}code{background:#edf2f7;padding:2px 5px;border-radius:4px}.two{display:grid;grid-template-columns:1fr 1fr;gap:24px}.caption{font-size:13px;margin-top:10px}noscript{display:block;background:#fff0ce;padding:20px}@media(max-width:760px){main{padding:20px 12px}.stats{grid-template-columns:1fr 1fr}.card{padding:16px}.two{grid-template-columns:1fr}h1{font-size:26px}}
+</style>
+<main>
+<div class="eyebrow">EEG CALIBRATION / ATTENTION</div>
+<h1>平滑与阈值，放在同一张图里比较</h1>
+<p>先看整轮留出验证，再看准确率、响应速度与跳变之间的取舍。所有滤波只使用当前与过去的数据。</p>
+<div id="overview" class="stats"></div>
+<div class="notice" id="assessment">这是当前采集条件下的校准结果。最终部署参数使用了全部数据，其拟合分数不能作为独立测试成绩。请固定参数后新采一轮验证。</div>
+<section class="card">
+<h2>01 / 整轮留出验证</h2>
+<p id="protocol"></p>
+<svg id="validation" viewBox="0 0 1000 280" role="img" aria-label="各方法整轮留出验证的平衡准确率"></svg>
+<div class="scroll"><table><thead><tr><th>策略</th><th>平衡准确率</th><th>专注识别率</th><th>放松识别率</th><th>误报 / 漏报</th><th>延迟惩罚</th><th>跳变/分钟</th><th>确认 / 未确认 / 提前误判</th></tr></thead><tbody id="validationRows"></tbody></table></div>
+<p class="caption">“自动选择”在每次留出时，用其余轮次选择方法与参数；各方法行也只在其余轮次内调参。每轮权重相同，计数直接相加。固定基准始终使用原始值 ≥ 50。</p>
+</section>
+<section class="card">
+<h2>02 / 参数取舍 · 全数据探索</h2>
+<p>每个点是一组参数。越靠左响应惩罚越小，越靠上区分效果越好。点击点或表格中的“查看”，在下方检查时间序列。</p>
+<div class="controls"><label>方法 <select id="method"><option value="all">全部方法</option><option value="raw">不平滑</option><option value="ma">移动平均</option><option value="ema">指数平滑</option></select></label><label>点的纵轴 <select id="vertical"><option value="balanced_accuracy">平衡准确率</option><option value="score">综合评分</option></select></label></div>
+<div class="legend"><span><i class="dot" style="background:#2777bc"></i>不平滑</span><span><i class="dot" style="background:#049b8e"></i>移动平均</span><span><i class="dot" style="background:#db8936"></i>指数平滑</span></div>
+<svg id="tradeoff" viewBox="0 0 1000 340" role="img" aria-label="参数准确率与延迟取舍散点图"></svg>
+<div id="selection"></div>
+<div class="scroll"><table><thead><tr><th>全数据评分前 12 组</th><th>平衡准确率</th><th>延迟惩罚</th><th>跳变/分钟</th><th>评分</th><th></th></tr></thead><tbody id="candidateRows"></tbody></table></div>
+<details><summary>查看阈值 × 平滑参数热力图</summary><p class="small">颜色越深，综合评分越高；每行是一种滤波设置，每列是一个阈值。悬停查看参数，点击选择。</p><div class="scroll"><svg id="heatmap" role="img" aria-label="参数评分热力图"></svg></div></details>
+</section>
+<section class="card">
+<h2>03 / 逐轮检查实际轨迹</h2>
+<div class="controls"><label>采集轮次 <select id="session"></select></label><label>对比参数 <select id="traceConfig"><option value="heldout">本轮留出时选出的参数</option><option value="recommended">全数据推荐参数</option><option value="chosen">散点图 / 表格选中的参数</option><option value="baseline">固定基准：不平滑，阈值 50</option></select></label></div>
+<div class="legend"><span><i class="dot" style="background:#b0bac9"></i>原始 attention</span><span><i class="dot" style="background:#167f91"></i>平滑后</span><span><i class="dot" style="background:#c4752a"></i>阈值</span><span><i class="dot" style="background:#e4f2ee"></i>实验要求专注</span><span><i class="dot" style="background:#cf4850"></i>误判样本</span></div>
+<svg id="timeline" viewBox="0 0 1000 350" role="img" aria-label="原始值、平滑值、阈值、标签与预测时间序列"></svg>
+<p id="traceSummary"></p>
+<p class="caption">横轴是电脑接收时间，空白间隔代表没有保存的数据。滤波器跨阶段保留状态。图中的标签来自实验指令，并非测得的真实心理状态。下方色带显示每个有效观测时刻的预测。</p>
+<details><summary>每轮留出选择及结果</summary><div class="scroll"><table><thead><tr><th>轮次</th><th>仅用其余轮次选出的参数</th><th>平衡准确率</th><th>误报 / 漏报</th><th>延迟惩罚</th></tr></thead><tbody id="foldRows"></tbody></table></div></details>
+</section>
+<section class="card"><h2>04 / 如何解读与复现</h2><p id="recommendation"></p><p id="formula"></p><p>延迟在实验指令切换后连续判断正确达到指定次数时确认，使用最后一个确认样本的接收时间。若切换前已经误判成目标状态，或在观察窗口内无法确认，则不给“零延迟”，统一按完整窗口惩罚。这里的延迟是指令相对时间，包含人的反应、设备和传输影响；现有轮次只测试了放松→专注。</p><p>移动平均窗口以有效样本数计；约 1 Hz 接收时才近似为秒。没有插值，也没有补造准备阶段的数据。确认次数只用于响应指标，没有额外改变阈值分类结果。</p><p>随报告保存：<code>candidates.csv</code> 全数据参数表、<code>folds.csv</code> 留出验证表、<code>recommendation.json</code> 参数、评分规则、输入摘要和 SHA-256。阈值边界为大于等于。</p><details><summary>输入与排除记录</summary><pre id="inputs" style="white-space:pre-wrap;word-break:break-word"></pre></details></section>
+<noscript>请启用浏览器 JavaScript 查看交互图表；数值也保存在同目录的 CSV 和 JSON 文件中。</noscript>
+</main>
+<script type="application/json" id="reportData">__REPORT_DATA__</script>
+<script>
+'use strict';
+const D=JSON.parse(document.getElementById('reportData').textContent);
+const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
+const colors={raw:'#2777bc',ma:'#049b8e',ema:'#db8936'};
+const names={selected:'自动选择',raw:'不平滑（调阈值）',ma:'移动平均',ema:'指数平滑',baseline:'固定基准 ≥ 50'};
+const pct=v=>(100*v).toFixed(1)+'%', num=v=>v==null?'—':v.toFixed(2);
+const configText=c=>(c.method==='raw'?'不平滑':c.method==='ma'?'移动平均 / '+c.parameter+' 点':'指数平滑 / α='+c.parameter)+' / 阈值 '+c.threshold;
+function node(tag,attrs={},text){const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(text!==undefined)e.textContent=text;return e;}
+function add(svg,tag,attrs,text){const e=node(tag,attrs,text);svg.appendChild(e);return e;}
+function cell(row,value){const e=document.createElement('td');e.textContent=value;row.appendChild(e);return e;}
+function tableRow(id,values){const r=document.createElement('tr');values.forEach(v=>cell(r,v));$(id).appendChild(r);return r;}
+function axes(svg,{x0=65,y0=25,w=890,h=230,xmax=15,ymin=0,ymax=1,xlabel='延迟惩罚（秒）',ylabel='平衡准确率'}={}){
+ const x=v=>x0+w*v/xmax,y=v=>y0+h*(ymax-v)/(ymax-ymin);
+ for(let i=0;i<=5;i++){const v=ymin+(ymax-ymin)*i/5;add(svg,'line',{x1:x0,x2:x0+w,y1:y(v),y2:y(v),class:'grid'});add(svg,'text',{x:x0-10,y:y(v)+4,'text-anchor':'end'},pct(v));const t=xmax*i/5;add(svg,'text',{x:x(t),y:y0+h+22,'text-anchor':'middle'},t.toFixed(1));}
+ add(svg,'text',{x:x0,y:15},ylabel);add(svg,'text',{x:x0+w,y:y0+h+50,'text-anchor':'end'},xlabel);return {x,y};
+}
+let chosen=D.candidates[0];
+function selectCandidate(c){chosen=c;$('traceConfig').value='chosen';showSelection();drawTimeline();}
+function showSelection(){const m=chosen.metrics;$('selection').textContent='选中：'+configText(chosen.config)+' ｜ 平衡准确率 '+pct(m.balanced_accuracy)+' ｜ 延迟惩罚 '+num(m.delay_penalty_s)+' 秒 ｜ 跳变 '+num(m.flips_per_min)+'/分钟 ｜ 综合评分 '+num(m.score*100)+'（全数据探索）';}
+function drawTradeoff(){const svg=$('tradeoff');svg.replaceChildren();const key=$('vertical').value;const candidates=D.candidates.filter(c=>$('method').value==='all'||c.config.method===$('method').value);const low=Math.min(0,...candidates.map(c=>c.metrics[key]));const {x,y}=axes(svg,{h:245,xmax:D.protocol.horizon_s,ymin:Math.floor(low*10)/10,ymax:1,ylabel:key==='score'?'综合评分（百分制）':'平衡准确率'});
+ for(const c of candidates){const p=add(svg,'circle',{cx:x(c.metrics.delay_penalty_s),cy:y(c.metrics[key]),r:3.4,fill:colors[c.config.method],opacity:.55,style:'cursor:pointer'});p.appendChild(node('title',{},configText(c.config)+' / '+pct(c.metrics.balanced_accuracy)+' / '+num(c.metrics.delay_penalty_s)+'s'));p.addEventListener('click',()=>selectCandidate(c));}
+}
+function drawHeatmap(){const svg=$('heatmap');const settings=[...new Set(D.candidates.map(c=>c.config.method+':'+c.config.parameter))].sort();const thresholds=[...new Set(D.candidates.map(c=>c.config.threshold))].sort((a,b)=>a-b);svg.setAttribute('viewBox',`0 0 1000 ${settings.length*25+65}`);svg.style.minWidth='850px';
+ const min=Math.min(...D.candidates.map(c=>c.metrics.score)),max=Math.max(...D.candidates.map(c=>c.metrics.score));const width=805/thresholds.length;
+ settings.forEach((s,i)=>add(svg,'text',{x:165,y:40+i*25,'text-anchor':'end'},s));
+ thresholds.forEach((t,i)=>{if(i%Math.max(1,Math.ceil(thresholds.length/12))===0)add(svg,'text',{x:180+i*width,y:18},t);});
+ for(const c of D.candidates){const i=settings.indexOf(c.config.method+':'+c.config.parameter),j=thresholds.indexOf(c.config.threshold);const z=(c.metrics.score-min)/(max-min||1);const rect=add(svg,'rect',{x:180+j*width,y:25+i*25,width:Math.max(1,width-.5),height:23,fill:`hsl(184 55% ${95-z*64}%)`,style:'cursor:pointer'});rect.appendChild(node('title',{},configText(c.config)+' / score '+num(c.metrics.score*100)));rect.addEventListener('click',()=>selectCandidate(c));}
+}
+function filtered(rows,c){let last=null,queue=[],total=0;return rows.map(r=>{const v=r.attention;if(c.method==='raw')return v;if(c.method==='ma'){queue.push(v);total+=v;if(queue.length>c.parameter)total-=queue.shift();return total/queue.length;}last=last===null?v:c.parameter*v+(1-c.parameter)*last;return last;});}
+function drawTimeline(){const s=D.traces[Number($('session').value)||0];const fold=D.folds.find(f=>f.strategy==='selected'&&f.session_id===s.id);const mode=$('traceConfig').value;const c=mode==='heldout'?fold.config:mode==='recommended'?D.recommendation.config:mode==='baseline'?{method:'raw',parameter:0,threshold:50}:chosen.config;const svg=$('timeline');svg.replaceChildren();const rows=s.rows,values=filtered(rows,c),start=rows[0].time,end=rows[rows.length-1].time;const x=t=>65+890*(t-start)/(end-start||1),y=v=>265-2.3*v;
+ // Draw separate observed phase extents: do not imply data existed during preparation.
+ let i=0;while(i<rows.length){let j=i;while(j+1<rows.length&&rows[j+1].label===rows[i].label)j++;if(rows[i].label)add(svg,'rect',{x:x(rows[i].time),y:25,width:Math.max(1,x(rows[j].time)-x(rows[i].time)),height:240,fill:'#e4f2ee'});i=j+1;}
+ for(let v=0;v<=100;v+=20){add(svg,'line',{x1:65,x2:955,y1:y(v),y2:y(v),class:'grid'});add(svg,'text',{x:55,y:y(v)+4,'text-anchor':'end'},v);}
+ for(let j=0;j<=6;j++){const t=start+(end-start)*j/6;add(svg,'text',{x:x(t),y:285,'text-anchor':'middle'},(t-start).toFixed(0));}
+ function line(vals,color,width){let pts=[];for(let j=0;j<rows.length;j++){if(j&&(rows[j].label!==rows[j-1].label||rows[j].time-rows[j-1].time>3)){add(svg,'polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':width});pts=[];}pts.push(x(rows[j].time)+','+y(vals[j]));}add(svg,'polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':width});}
+ line(rows.map(r=>r.attention),'#b0bac9',1.5);line(values,'#167f91',2.5);add(svg,'line',{x1:65,x2:955,y1:y(c.threshold),y2:y(c.threshold),stroke:'#c4752a','stroke-dasharray':'6 5'});
+ let errors=0;rows.forEach((r,j)=>{const prediction=Number(values[j]>=c.threshold);add(svg,'rect',{x:x(r.time)-1.5,y:301,width:3,height:13,fill:prediction?'#167f91':'#b9c3d1'});if(prediction!==r.label){errors++;const p=add(svg,'circle',{cx:x(r.time),cy:y(values[j]),r:3.5,fill:'#cf4850'});p.appendChild(node('title',{},'t='+num(r.time-start)+'s / attention='+r.attention+' / 平滑='+num(values[j])));}});
+ add(svg,'text',{x:65,y:18},'attention');add(svg,'text',{x:955,y:340,'text-anchor':'end'},'距本轮首个有效样本（秒）；色带：灰=放松，青=专注');
+ $('traceSummary').textContent=s.id+' ｜ '+configText(c)+' ｜ 误判 '+errors+'/'+rows.length+' 个样本'+(mode==='heldout'?' ｜ 本轮不参与参数选择':' ｜ 参数探索 / 固定参数展示');
+}
+function init(){const m=D.validation.selected;for(const [label,value] of [['真实采集轮次',D.traces.length],['有效样本',D.traces.reduce((n,s)=>n+s.rows.length,0)],['留出平衡准确率',pct(m.balanced_accuracy)],['候选参数组合',D.grid_size]]){const box=document.createElement('div');box.className='stat';const t=document.createElement('span');t.textContent=label;const v=document.createElement('strong');v.textContent=value;box.append(t,v);$('overview').appendChild(box);}
+ $('assessment').textContent=(D.validation_assessment.supports_replacing_baseline?'自动选参流程在当前留出验证的综合评分上优于固定基准，仍需新数据验证。':'自动选参流程在当前留出验证中未优于固定阈值 50，暂不建议据此替换基准。')+' 全数据推荐参数仅是下一轮校准候选，其拟合成绩不能当作独立测试结果。';
+ $('protocol').textContent='每次留出 1 轮，其余 '+(D.traces.length-1)+' 轮用于选参数。响应要求连续 '+D.protocol.confirm_samples+' 个有效样本判断正确，观察窗口 '+D.protocol.horizon_s+' 秒。';
+ const svg=$('validation');const entries=Object.entries(D.validation);entries.forEach(([key,v],i)=>{const yy=30+i*44;add(svg,'text',{x:175,y:yy+15,'text-anchor':'end'},names[key]);add(svg,'rect',{x:190,y:yy,width:700,height:23,rx:4,fill:'#edf1f5'});add(svg,'rect',{x:190,y:yy,width:700*v.balanced_accuracy,height:23,rx:4,fill:key==='selected'?'#123f65':colors[key]||'#aab5c3'});add(svg,'text',{x:900,y:yy+16},pct(v.balanced_accuracy));tableRow('validationRows',[names[key],pct(v.balanced_accuracy),pct(v.focus_recall),pct(v.relax_recall),v.fp+' / '+v.fn,num(v.delay_penalty_s)+' s',num(v.flips_per_min),v.confirmed+' / '+v.missed+' / '+v.preexisting]);});
+ D.candidates.slice(0,12).forEach(c=>{const r=tableRow('candidateRows',[configText(c.config),pct(c.metrics.balanced_accuracy),num(c.metrics.delay_penalty_s)+' s',num(c.metrics.flips_per_min),num(c.metrics.score*100)]);const td=cell(r,'');const b=document.createElement('button');b.textContent='查看';b.onclick=()=>selectCandidate(c);td.appendChild(b);});
+ D.traces.forEach((s,i)=>{const o=document.createElement('option');o.value=i;o.textContent=s.id;$('session').appendChild(o);});
+ D.folds.filter(f=>f.strategy==='selected').forEach(f=>tableRow('foldRows',[f.session_id,configText(f.config),pct(f.metrics.balanced_accuracy),f.metrics.fp+' / '+f.metrics.fn,num(f.metrics.delay_penalty_s)+' s']));
+ $('recommendation').textContent='全数据推荐：'+configText(D.recommendation.config)+'。这是后续固定参数验证的候选，留出成绩评价的是选参流程，不是这个固定配置的独立成绩。';
+ $('formula').textContent='综合评分 = 平衡准确率 − '+D.protocol.delay_weight+' × 延迟惩罚秒数 − '+D.protocol.flip_weight+' × 阶段内跳变/分钟。平衡准确率 =（专注识别率 + 放松识别率）/ 2。评分权重是可调整的工程取舍。';
+ $('inputs').textContent=JSON.stringify({created_at:D.created_at,protocol:D.protocol,sessions:D.sessions,excluded:D.excluded},null,2);
+ $('method').onchange=drawTradeoff;$('vertical').onchange=drawTradeoff;$('session').onchange=drawTimeline;$('traceConfig').onchange=drawTimeline;
+ showSelection();drawTradeoff();drawHeatmap();drawTimeline();
+}
+init();
+</script>
+</html>
