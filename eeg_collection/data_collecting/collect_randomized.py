@@ -11,7 +11,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from collect_data import FIELDS, FEATURES, SHANGHAI, SimulatedStream, parse_sample, preparation_seconds
+from . import DATA_DIR
+from .collect_data import FIELDS, FEATURES, SHANGHAI, SimulatedStream, parse_sample, preparation_seconds
 
 
 LABELS = {'relax': 0, 'focus': 1, 'transition': None}
@@ -149,7 +150,7 @@ def main(argv=None):
     parser.add_argument('--list-ports', action='store_true', help='列出串口后退出')
     parser.add_argument('--subject', default='P01', help='参与者编号')
     parser.add_argument('--notes', default='', help='本轮备注')
-    parser.add_argument('--output-dir', type=Path, default=Path(__file__).with_name('data') / 'randomized')
+    parser.add_argument('--output-dir', type=Path, default=DATA_DIR / 'randomized')
     parser.add_argument('--prepare-seconds', type=preparation_seconds, default=5)
     parser.add_argument('--seed', type=int, help='指定随机种子以复现排程')
     parser.add_argument('--simulate', action='store_true', help='使用模拟数据试运行')
@@ -162,7 +163,7 @@ def main(argv=None):
                 import serial
                 from serial.tools import list_ports
             except ImportError:
-                parser.error('请先运行 python -m pip install -r eeg_collection/requirements.txt')
+                parser.error('请先运行 python -m pip install -r eeg_collection/data_collecting/requirements.txt')
             if args.list_ports or not args.port:
                 ports = list(list_ports.comports())
                 for index, item in enumerate(ports, 1):

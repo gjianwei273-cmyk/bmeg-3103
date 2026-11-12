@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import collect_data as app
+from . import collect_data as app
 
 
 class Clock:

@@ -4,9 +4,9 @@ import io
 import json
 import unittest
 
-from collect_data import FEATURES
-from focus_demo import DemoSession, LocalHandler, LocalServer, SerialFrames, read_replay, run_replay
-from focus_runtime import FocusTimer
+from ...data_collecting.collect_data import FEATURES
+from .focus_demo import DemoSession, LocalHandler, LocalServer, SerialFrames, read_replay, run_replay
+from .focus_runtime import FocusTimer
 
 
 FRAME = (1, 2, 3, 4, 5, 6, 7, 8, 80)

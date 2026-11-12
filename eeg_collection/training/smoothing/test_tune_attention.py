@@ -8,7 +8,7 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
-import tune_attention as app
+from . import tune_attention as app
 
 
 def session(name='one', values=(20, 20, 20, 80, 80, 80), labels=(0, 0, 0, 1, 1, 1)):
@@ -181,7 +181,7 @@ class InputAndCliTests(unittest.TestCase):
             for name in ['a', 'b', 'c']:
                 write_session(data, name)
             write_session(data, 'sim', source='simulation')
-            cmd = [sys.executable, str(Path(app.__file__)), '--data-dir', str(data),
+            cmd = [sys.executable, "-m", app.__name__, '--data-dir', str(data),
                    '--output-dir', str(root / 'reports'), '--windows', '3',
                    '--alphas', '0.5', '--thresholds', '30,50,70']
             for _ in range(2):
@@ -222,7 +222,7 @@ class InputAndCliTests(unittest.TestCase):
             write_session(root)
             for extra in [[], ['--alphas', 'nan'], ['--confirm-samples', '0'],
                           ['--delay-weight', '-1'], ['--thresholds', '']]:
-                result = subprocess.run([sys.executable, app.__file__, '--data-dir', d, *extra],
+                result = subprocess.run([sys.executable, "-m", app.__name__, '--data-dir', d, *extra],
                                         capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
 

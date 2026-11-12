@@ -12,6 +12,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ...data_collecting import DATA_DIR
+
 
 @dataclass(frozen=True)
 class Config:
@@ -276,7 +278,7 @@ def number_list(value, kind=float):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Search causal attention filters; validate by held-out session; write offline HTML charts.')
-    parser.add_argument('--data-dir', type=Path, default=Path(__file__).with_name('data'))
+    parser.add_argument('--data-dir', type=Path, default=DATA_DIR / 'half_half')
     parser.add_argument('--output-dir', type=Path, default=Path(__file__).with_name('reports'))
     parser.add_argument('--windows', default=','.join(map(str, range(2, 11))), help='trailing sample counts, comma-separated')
     parser.add_argument('--alphas', default=','.join(str(i / 10) for i in range(1, 10)))

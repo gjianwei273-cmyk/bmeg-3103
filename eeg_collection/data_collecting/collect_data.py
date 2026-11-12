@@ -10,6 +10,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from . import DATA_DIR
+
 
 FEATURES = ['delta', 'theta', 'low_alpha', 'high_alpha', 'low_beta',
             'high_beta', 'low_gamma', 'middle_gamma', 'attention']
@@ -223,7 +225,7 @@ def main():
     parser.add_argument('--list-ports', action='store_true', help='列出串口后退出')
     parser.add_argument('--subject', default='P01', help='参与者编号')
     parser.add_argument('--notes', default='', help='本轮备注')
-    parser.add_argument('--output-dir', type=Path, default=Path(__file__).resolve().parent / 'data')
+    parser.add_argument('--output-dir', type=Path, default=None)
     parser.add_argument('--relax-seconds', type=positive_seconds, default=60)
     parser.add_argument('--focus-seconds', type=positive_seconds, default=60)
     parser.add_argument('--phases', type=parse_phases,
@@ -232,13 +234,15 @@ def main():
     parser.add_argument('--simulate', action='store_true', help='使用模拟数据；不能用于训练或报告真实结果')
     parser.add_argument('--yes', action='store_true', help='跳过开始前的 Enter 确认')
     args = parser.parse_args()
+    if args.output_dir is None:
+        args.output_dir = DATA_DIR / ('continuous' if args.phases else 'half_half')
     serial = None
     if not args.simulate or args.list_ports:
         try:
             import serial
             from serial.tools import list_ports
         except ImportError:
-            parser.exit(2, '请先安装依赖：python -m pip install -r eeg_collection/requirements.txt\n')
+            parser.exit(2, '请先安装依赖：python -m pip install -r eeg_collection/data_collecting/requirements.txt\n')
         ports = list(list_ports.comports())
         if args.list_ports or not args.port:
             for index, item in enumerate(ports, 1):

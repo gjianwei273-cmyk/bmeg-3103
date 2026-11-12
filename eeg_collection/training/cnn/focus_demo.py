@@ -11,8 +11,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from collect_data import FEATURES, parse_sample
-from focus_pipeline import feature_values, number
+from ...data_collecting.collect_data import FEATURES, parse_sample
+from .focus_pipeline import feature_values, number
 
 
 class SerialFrames:
@@ -207,8 +207,8 @@ class LocalServer(ThreadingHTTPServer):
 
 
 def main():
-    from focus_pipeline import load_model_bundle
-    from focus_runtime import FocusTimer
+    from .focus_pipeline import load_model_bundle
+    from .focus_runtime import FocusTimer
 
     parser = argparse.ArgumentParser(description='在本机浏览器查看实时专注判定与专注时长。')
     parser.add_argument('--model', required=True, type=Path, help='训练导出的模型目录')
@@ -235,7 +235,7 @@ def main():
             try:
                 import serial
             except ImportError:
-                parser.error('请先安装 pyserial：python -m pip install -r eeg_collection/requirements.txt')
+                parser.error('请先安装 pyserial：python -m pip install -r eeg_collection/data_collecting/requirements.txt')
             session = DemoSession(timer, 'serial')
             worker = threading.Thread(target=run_serial,
                                       args=(session, serial, args.port, args.baudrate, stop),

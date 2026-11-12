@@ -7,13 +7,14 @@ import json
 import math
 from pathlib import Path
 
-from focus_runtime import CausalWindow, FocusTimer, select_values
+from ...data_collecting import DATA_DIR
+from .focus_runtime import CausalWindow, FocusTimer, select_values
 
 
 BANDS = ('delta', 'theta', 'low_alpha', 'high_alpha', 'low_beta', 'high_beta',
          'low_gamma', 'middle_gamma')
 MODES = ('attention', 'bands', 'combined')
-DEFAULT_DATA = Path(__file__).with_name('data')
+DEFAULT_DATA = DATA_DIR / 'half_half'
 DEFAULT_SETTINGS = dict(max_gap_s=2.5, threshold=.5, hysteresis=.1, on_frames=1, off_frames=2)
 
 

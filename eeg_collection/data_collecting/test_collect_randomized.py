@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import collect_randomized as app
+from . import collect_randomized as app
 
 
 class Clock:

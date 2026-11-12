@@ -4,9 +4,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from focus_pipeline import (BANDS, Frame, Session, interval_metrics, load_sessions,
+from .focus_pipeline import (BANDS, Frame, Session, interval_metrics, load_sessions,
                             load_model_bundle, make_windows, replay_metrics, validation_folds)
-from focus_runtime import FocusTimer
+from .focus_runtime import FocusTimer
 
 
 SETTINGS = dict(window=2, input_mode='bands', max_gap_s=2.5, threshold=.5,
@@ -69,7 +69,7 @@ class FocusTests(unittest.TestCase):
 
 
     def test_cnn_configuration_accepts_every_frame_and_channel(self):
-        from focus_train import build_model
+        from .focus_train import build_model
         model = build_model(window=4, width=9, layers=3, filters=4, seed=0)
         self.assertEqual(model.input_shape, (None, 4, 9))
         self.assertEqual(model.output_shape, (None, 1))
@@ -112,7 +112,7 @@ class FocusTests(unittest.TestCase):
         self.assertEqual(result['on_delays_s'], [0])
 
     def test_band_only_training_exports_bundle_and_reserves_entire_day(self):
-        from focus_train import main
+        from .focus_train import main
         with TemporaryDirectory(dir=Path(__file__).parent) as directory:
             data = Path(directory) / 'data'
             data.mkdir()

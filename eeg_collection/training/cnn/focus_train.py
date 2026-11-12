@@ -12,7 +12,7 @@ from uuid import uuid4
 import keras
 import numpy as np
 
-from focus_pipeline import (DEFAULT_DATA, DEFAULT_SETTINGS, MODES, interval_metrics,
+from .focus_pipeline import (DEFAULT_DATA, DEFAULT_SETTINGS, MODES, interval_metrics,
                             load_sessions, make_windows, model_inputs, replay_states,
                             validation_folds)
 
