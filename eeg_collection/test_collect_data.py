@@ -1,5 +1,7 @@
+import argparse
 import csv
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,6 +90,57 @@ class CollectorTests(unittest.TestCase):
             self.assertTrue(rows)
             self.assertTrue(result['summary_path'].exists())
 
+    def test_continuous_phases_keep_partial_lines_and_receive_timing_across_cues(self):
+        class BoundaryStream(Stream):
+            def __init__(self, clock):
+                super().__init__(clock)
+                self.resets = 0
+                self.parts = [(0.15, b'1,2,3,4,5,6,7,8,81\n'),
+                              (0.28, b'1,2,3,4,'),
+                              (0.38, b'5,6,7,8,82\n'),
+                              (0.63, b'1,2,3,4,5,6,7,8,83\n')]
+
+            def reset_input_buffer(self):
+                self.resets += 1
+
+            def read(self, size):
+                if self.parts and self.clock.now >= self.parts[0][0]:
+                    return self.parts.pop(0)[1]
+                return b''
+
+        with tempfile.TemporaryDirectory(dir=self.temp_root) as directory:
+            clock = Clock()
+            stream = BoundaryStream(clock)
+            messages = io.StringIO()
+            result = app.collect(stream, directory,
+                                 phases=[('focus', 0.25), ('relax', 0.25), ('focus', 0.30)],
+                                 prepare_seconds=0.10, clock=clock.monotonic,
+                                 sleep=clock.sleep, console=messages)
+            with result['csv_path'].open(encoding='utf-8-sig') as handle:
+                reader = csv.DictReader(handle)
+                self.assertEqual(reader.fieldnames, app.FIELDS)
+                rows = list(reader)
+            summary = json.loads(result['summary_path'].read_text(encoding='utf-8'))
+            self.assertEqual(result['status'], 'completed')
+            self.assertEqual(stream.resets, 1)
+            self.assertEqual([(r['phase'], r['label'], r['attention']) for r in rows],
+                             [('focus', '1', '81'), ('relax', '0', '82'), ('focus', '1', '83')])
+            self.assertEqual([r['receive_interval_s'] for r in rows], ['', '0.250', '0.250'])
+            self.assertEqual([r['phase_elapsed_s'] for r in rows], ['0.050'] * 3)
+            events = summary['phase_events']
+            self.assertEqual([(e['phase'], e['label'], e['duration_s']) for e in events],
+                             [('focus', 1, 0.25), ('relax', 0, 0.25), ('focus', 1, 0.30)])
+            for event, elapsed in zip(events, [0.10, 0.35, 0.60]):
+                self.assertAlmostEqual(event['elapsed_s'], elapsed)
+            self.assertIn('数呼吸', messages.getvalue())
+
+    def test_phase_schedule_accepts_fractions_and_rejects_malformed_entries(self):
+        self.assertEqual(app.parse_phases('focus:17.5, relax:23,focus:12'),
+                         [('focus', 17.5), ('relax', 23.0), ('focus', 12.0)])
+        for value in ['', 'focus', 'rest:5', 'focus:0', 'relax:inf', 'focus:1,']:
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                app.parse_phases(value)
+
     def test_no_data_does_not_claim_success(self):
         class Empty(Stream):
             def read(self, size):
@@ -139,7 +192,6 @@ class CollectorTests(unittest.TestCase):
                 self.assertEqual(len(list(csv.DictReader(handle))), 2)
 
     def test_rejects_invalid_duration_arguments(self):
-        import argparse
         for number in ['0', '-1', 'nan', 'inf']:
             with self.subTest(number=number), self.assertRaises(argparse.ArgumentTypeError):
                 app.positive_seconds(number)

@@ -1,4 +1,4 @@
-"""Collect one labelled TGAM round from the existing nine-column Arduino sketch."""
+"""Collect labelled TGAM data from the existing nine-column Arduino sketch."""
 import argparse
 import csv
 import json
@@ -18,6 +18,10 @@ FIELDS = ['session_id', 'subject_id', 'round', 'sample_index', 'timestamp',
           'source', 'port', 'baudrate', 'valid', 'training_eligible', 'error',
           *FEATURES, 'raw_line', 'notes']
 SHANGHAI = timezone(timedelta(hours=8))
+PHASE_LABELS = {'relax': 0, 'focus': 1}
+RELAX_INSTRUCTION = '放松：自然呼吸，放松身体，避免刻意集中注意力。'
+FOCUS_INSTRUCTION = '专注：保持注视固定目标，持续做心算，尽量避免身体运动。'
+BREATH_INSTRUCTION = '专注：自然呼吸，默数呼吸次数，尽量避免身体运动。'
 
 
 def parse_sample(line):
@@ -36,8 +40,20 @@ def parse_sample(line):
 
 def collect(stream, output_dir, *, subject='P01', notes='', port='', baudrate=57600,
             relax_seconds=60, focus_seconds=60, prepare_seconds=5, source='serial',
-            clock=time.monotonic, sleep=time.sleep, console=sys.stdout):
+            phases=None, clock=time.monotonic, sleep=time.sleep, console=sys.stdout):
     """Persist every complete active-phase line; injected time/stream allow offline tests."""
+    continuous = phases is not None
+    if continuous:
+        phases = list(phases)
+        if not phases or any(phase not in PHASE_LABELS or not math.isfinite(duration) or duration <= 0
+                             for phase, duration in phases):
+            raise ValueError('连续采集需要至少一个 relax 或 focus 阶段，且每段时长必须为正的有限数字。')
+        relax_seconds = sum(duration for phase, duration in phases if phase == 'relax')
+        focus_seconds = sum(duration for phase, duration in phases if phase == 'focus')
+    else:
+        phases = [('relax', relax_seconds), ('focus', focus_seconds)]
+    instructions = {'relax': RELAX_INSTRUCTION,
+                    'focus': BREATH_INSTRUCTION if continuous else FOCUS_INSTRUCTION}
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     session_id = datetime.now(SHANGHAI).strftime('%Y%m%d_%H%M%S') + '_' + uuid.uuid4().hex[:8]
@@ -45,49 +61,58 @@ def collect(stream, output_dir, *, subject='P01', notes='', port='', baudrate=57
     summary_path = output_dir / (session_id + '.json')
     started_at = datetime.now(SHANGHAI).isoformat(timespec='milliseconds')
     started = clock()
-    counts = {phase: {'valid': 0, 'invalid': 0, 'training_eligible': 0}
-              for phase in ('relax', 'focus')}
+    counts = {phase: {'valid': 0, 'invalid': 0, 'training_eligible': 0} for phase in PHASE_LABELS}
     status = 'completed'
     index = 0
     error = ''
-    print('一轮采集：放松 → 专注。保持静止、自然呼吸；Ctrl+C 可停止并保存。', file=console, flush=True)
+    phase_events = []
+    all_phases_had_data = True
+    pending = b''
+    previous = None
+    protocol = '连续采集：按提示切换放松与专注。' if continuous else '一轮采集：放松 → 专注。'
+    print(protocol + '保持静止、自然呼吸；Ctrl+C 可停止并保存。', file=console, flush=True)
     try:
         with csv_path.open('x', encoding='utf-8-sig', newline='') as handle:
             writer = csv.DictWriter(handle, fieldnames=FIELDS)
             writer.writeheader()
             handle.flush()
-            for phase, label, duration, instruction in (
-                ('relax', 0, relax_seconds, '放松：自然呼吸，放松身体，避免刻意集中注意力。'),
-                ('focus', 1, focus_seconds, '专注：保持注视固定目标，持续做心算，尽量避免身体运动。'),
-            ):
-                print('\n请准备' + instruction, file=console, flush=True)
-                deadline = clock() + prepare_seconds
-                last_tick = None
-                while clock() < deadline:
-                    remaining = math.ceil(deadline - clock())
-                    if remaining != last_tick:
-                        print(f'准备倒计时 {remaining} 秒（此时不保存数据）', file=console, flush=True)
-                        last_tick = remaining
-                    stream.read(4096)  # Drain old data throughout preparation.
-                    sleep(0.05)
-                stream.reset_input_buffer()
-                pending = b''
+            for phase_index, (phase, duration) in enumerate(phases):
+                label = PHASE_LABELS[phase]
+                instruction = instructions[phase]
+                if not continuous or phase_index == 0:
+                    print('\n请准备' + instruction, file=console, flush=True)
+                    deadline = clock() + prepare_seconds
+                    last_tick = None
+                    while clock() < deadline:
+                        remaining = math.ceil(deadline - clock())
+                        if remaining != last_tick:
+                            print(f'准备倒计时 {remaining} 秒（此时不保存数据）', file=console, flush=True)
+                            last_tick = remaining
+                        stream.read(4096)  # Drain old data throughout preparation.
+                        sleep(0.05)
+                    stream.reset_input_buffer()
+                    pending = b''
+                    previous = None
                 phase_start = clock()
-                previous = None
-                last_tick = None
                 print('\a开始' + instruction, file=console, flush=True)
-                while clock() - phase_start < duration:
-                    remaining = math.ceil(duration - (clock() - phase_start))
+                if continuous:
+                    phase_events.append(dict(phase=phase, label=label, elapsed_s=phase_start - started,
+                                             duration_s=duration))
+                deadline = phase_start + duration
+                prior_valid = counts[phase]['valid']
+                last_tick = None
+                while (now := clock()) < deadline:
+                    remaining = math.ceil(deadline - now)
                     if remaining != last_tick:
-                        count = counts[phase]['valid']
-                        warning = '；暂无有效数据，请检查佩戴/串口' if clock() - phase_start > 3 and count == 0 else ''
+                        count = counts[phase]['valid'] - prior_valid
+                        warning = '；暂无有效数据，请检查佩戴/串口' if now - phase_start > 3 and count == 0 else ''
                         print(f'{"放松" if label == 0 else "专注"} 剩余 {remaining} 秒 | 有效数据 {count} 条{warning}',
                               file=console, flush=True)
                         last_tick = remaining
                     chunk = stream.read(4096)
                     received = clock()
-                    # Do not assign data read after the deadline to the preceding phase.
-                    if received - phase_start >= duration:
+                    # A continuous phase ends at the next cue. Retain data read before that cue.
+                    if not continuous and received >= deadline:
                         break
                     pending += chunk
                     while b'\n' in pending:
@@ -118,12 +143,13 @@ def collect(stream, output_dir, *, subject='P01', notes='', port='', baudrate=57
                         previous = received
                     if len(pending) > 65536:
                         raise ValueError('串口长时间没有换行，输入格式不符合九列 CSV 协议。')
-                    sleep(0.05)
+                    sleep(min(0.05, max(0, deadline - clock())) if continuous else 0.05)
+                all_phases_had_data &= counts[phase]['valid'] > prior_valid
     except KeyboardInterrupt:
         status = 'interrupted'
     except (OSError, ValueError) as exc:
         status, error = 'error', str(exc)
-    if status == 'completed' and any(c['valid'] == 0 for c in counts.values()):
+    if status == 'completed' and not all_phases_had_data:
         status = 'no_data'
     summary = dict(session_id=session_id, subject_id=subject, notes=notes,
                    started_at=started_at, ended_at=datetime.now(SHANGHAI).isoformat(timespec='milliseconds'),
@@ -133,6 +159,8 @@ def collect(stream, output_dir, *, subject='P01', notes='', port='', baudrate=57
                    timestamp_meaning='PC receive time, Asia/Shanghai; not sensor sampling time',
                    signal_quality='Arduino emits only quality=0 packets; quality is not transmitted',
                    csv_file=csv_path.name)
+    if continuous:
+        summary['phase_events'] = phase_events
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
     print(f'\n采集状态：{status}\nCSV：{csv_path.resolve()}\n摘要：{summary_path.resolve()}', file=console, flush=True)
     print(f'各阶段数量：{counts}', file=console, flush=True)
@@ -171,6 +199,17 @@ def positive_seconds(value):
     return number
 
 
+def parse_phases(value):
+    phases = []
+    for entry in value.split(','):
+        phase, separator, duration = entry.partition(':')
+        phase = phase.strip()
+        if not separator or phase not in PHASE_LABELS:
+            raise argparse.ArgumentTypeError('请使用 relax:秒数,focus:秒数 的格式，可重复或调整顺序')
+        phases.append((phase, positive_seconds(duration)))
+    return phases
+
+
 def preparation_seconds(value):
     number = float(value)
     if not math.isfinite(number) or number < 0:
@@ -187,6 +226,8 @@ def main():
     parser.add_argument('--output-dir', type=Path, default=Path(__file__).resolve().parent / 'data')
     parser.add_argument('--relax-seconds', type=positive_seconds, default=60)
     parser.add_argument('--focus-seconds', type=positive_seconds, default=60)
+    parser.add_argument('--phases', type=parse_phases,
+                        help='连续采集顺序和每段秒数，如 relax:17,focus:23,relax:12；仅在开头准备')
     parser.add_argument('--prepare-seconds', type=preparation_seconds, default=5)
     parser.add_argument('--simulate', action='store_true', help='使用模拟数据；不能用于训练或报告真实结果')
     parser.add_argument('--yes', action='store_true', help='跳过开始前的 Enter 确认')
@@ -224,7 +265,7 @@ def main():
         result = collect(stream, args.output_dir, subject=args.subject, notes=args.notes,
                          port='SIMULATED' if args.simulate else args.port,
                          relax_seconds=args.relax_seconds, focus_seconds=args.focus_seconds,
-                         prepare_seconds=args.prepare_seconds,
+                         prepare_seconds=args.prepare_seconds, phases=args.phases,
                          source='simulation' if args.simulate else 'serial')
         return {'completed': 0, 'interrupted': 130}.get(result['status'], 2)
     except KeyboardInterrupt:

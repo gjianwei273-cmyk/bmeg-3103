@@ -142,3 +142,71 @@ Python 测试覆盖因果滤波、跨阶段状态、阈值边界、混淆矩阵�
 留出隔离、数据过滤、时钟一致性、HTML 数据转义与重复运行不覆盖。
 如 PATH 中存在 Node.js，Python 集成测试也会运行图表脚本检查；Node 单独检查实际报告的图表生成与交互逻辑，
 不替代浏览器中的视觉布局检查。
+
+## 呼吸专注计时与 CNN 对比
+
+安装训练和演示依赖。训练使用本机 CPU，串口采集和原 Attention 搜索仍可单独使用原来的依赖。
+
+```powershell
+python -m pip install -r eeg_collection/requirements-focus.txt
+```
+
+### 采集不定长的标注数据
+
+```powershell
+python eeg_collection/collect_data.py --port COM4 --subject P01 --phases relax:22,focus:37,relax:19,focus:28,relax:24 --output-dir eeg_collection/data/breath
+```
+
+每个阶段用 `标签:秒数`，按给定顺序连续记录。可以传入小数时长、交换顺序或重复切换。
+正式开始前准备一次，之后不清串口缓冲。提示出现时开始数呼吸或自然休息。
+CSV 沿用原字段，JSON 的 `phase_events` 保存实际提示时间。记录时尽量保持姿势、睁闭眼条件一致。
+不传 `--phases` 时仍按原模式采集。
+
+训练可以读现有 CSV 和同名 JSON，也接受每文件一场采集的外部 CSV。外部 CSV 至少需要
+`label`、`elapsed_s`（秒）或带时区的 ISO `timestamp`，以及所选输入对应的列。
+标签接受 `0/1` 或 `relax/focus`，时长和切换顺序由时间和标签决定。
+可选 `valid`、`source`、`session_id`、`subject_id` 和 `poor_signal` 延用同样含义。
+导入旧 CSV 时，模型读取实际八频段值，八频段模式不会因 Attention 为 0 被排除。
+连续录制有 `phase_events` 时使用提示时间，否则从标签及可用的阶段相对时间推断。
+如果采集脚本用 `transition_label=1` 标记过渡且留空二分类标签，过渡帧仍进入实时窗口，
+但不会作为训练目标或计时对错的标注区间。
+选择跨日留出时，每份记录需要能从 CSV 时间戳或 JSON 开始时间识别采集日期。
+
+### 训练、比较与跨日测试
+
+```powershell
+# 先尝试现有同日数据
+python eeg_collection/focus_train.py
+
+# 之后改为新采的数呼吸数据，日期换成专门留作测试的采集日
+python eeg_collection/focus_train.py --data-dir eeg_collection/data/breath --subject P01 --holdout-day 2026-11-15
+```
+
+默认先比较 Attention、八频段、九项组合，再比较 4/8 帧，最后比较 1/2/3 层。需要加测
+12 帧用 `--windows 4 8 12`。老师若要求模型只用八频段，用 `--inputs bands`。
+每折以整场为单位，训练、早停及触发校准、计分使用不同录制。选模型时比较同一组有模型输出的时段。
+`--holdout-day` 会把指定日期排除在全部训练、预处理拟合、早停、调参和模型选择之外。
+同日录制的探索成绩不能用于判断跨日表现。旧模式阶段之间的准备空白也无法用于测量连续切换延迟。
+
+输出在 `eeg_collection/reports/focus_*/`。其中：
+
+- `comparison.csv` 是各阶段对照。计时错误率是误计与漏计秒数之和除以评估时长。准确率、F1 与混淆计数基于模型分数阈值 0.5。计时则使用校准后的触发规则。
+- `report.json` 保留每折设置、计分覆盖、验证轨迹、两种切换方向的延迟、漏检和无法观测的切换数。不同阶段的可比较时段可能不同。
+- `training_curve.csv`、`learning_curve.csv` 和 `curves.png` 展示训练轮数与独立录制数量的影响。数据量曲线用于探索同一验证轮上增加训练录制的效果。
+- `model.keras` 和 `model.json` 一起组成部署模型，包含预处理及计时设置。输出路径可用 `--output-dir` 指定空目录。
+
+`trend_ema_reference` 是本代码中的 Attention 趋势平滑参照，水平 EMA 系数 0.5、相邻差分 EMA 系数
+0.25，再把两者相加并裁剪到 0–1。它通过同一回放流程重新校准阈值。已有 PDF 的 `trend_b25` 实现
+未随该工作区提供，因此报告分别保留这个参照的名称和成绩。
+
+### 启动本地网页
+
+把下方路径换成训练命令打印的模型目录。使用串口前先关闭正在占用它的采集脚本或串口监视器。
+
+```powershell
+python eeg_collection/focus_demo.py --model eeg_collection/reports/focus_existing_data_final --port COM4
+python eeg_collection/focus_demo.py --model eeg_collection/reports/focus_existing_data_final --replay eeg_collection/data/20261105_183912_45e58863.csv
+```
+
+浏览器打开 [本地计时页面](http://127.0.0.1:8765)。实时模式先用串口数据预热，按开始后累计。
+回放模式按开始后用录制的时间间隔播放。信号超过间隔限制时暂停计时，恢复后重新填充窗口。

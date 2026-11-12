@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>冥想计时</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+      background: #101925;
+      color: #f1f5f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+      background: radial-gradient(ellipse at 50% 0%, #28364c, transparent 70%);
+    }
+    main {
+      --accent: #a8b9cb;
+      display: grid;
+      justify-items: center;
+      gap: 1.5rem;
+      width: min(100%, 31rem);
+      padding: clamp(1.4rem, 5vw, 2.75rem);
+      background: #172332;
+      border: 1px solid #33445a;
+      border-radius: 1.5rem;
+      text-align: center;
+      box-shadow: 0 1.5rem 4rem #070e1760;
+    }
+    main[data-state="focus"] { --accent: #92dfbb; }
+    main[data-state="relax"] { --accent: #a8c9f5; }
+    main[data-state="warming"] { --accent: #ecd3a0; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 1.15rem; font-weight: 650; }
+    .indicator {
+      display: grid;
+      place-items: center;
+      width: clamp(10.25rem, 47vw, 13rem);
+      aspect-ratio: 1;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      color: var(--accent);
+      box-shadow: inset 0 0 2rem #0f1b28, 0 0 0 .5rem #1d2b3d;
+      transition: color .25s ease, border-color .25s ease;
+    }
+    .indicator h2 { font-size: clamp(1.25rem, 6vw, 1.75rem); font-weight: 650; }
+    #source { font-size: .9rem; color: #bdcbd9; }
+    .time {
+      display: block;
+      margin: .25rem 0 0;
+      font-size: clamp(2.5rem, 13vw, 3.65rem);
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      font-weight: 620;
+      letter-spacing: -.04em;
+    }
+    .time-label, .score { color: #bdcbd9; font-size: .9rem; }
+    #score { color: #f1f5f8; font-variant-numeric: tabular-nums; }
+    button {
+      width: min(100%, 15rem);
+      min-height: 2.8rem;
+      padding: .6rem 1rem;
+      border: 0;
+      border-radius: .7rem;
+      background: #d1e0f4;
+      color: #182536;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: #e6f1ff; }
+    button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+    button:disabled { opacity: .55; cursor: default; }
+    @media (prefers-reduced-motion: reduce) { .indicator { transition: none; } }
+  </style>
+</head>
+<body>
+  <main id="dashboard" data-state="disconnected">
+    <h1>冥想计时</h1>
+    <div class="indicator">
+      <h2 id="state" role="status">正在连接</h2>
+    </div>
+    <p id="source">正在连接本机服务</p>
+    <p class="time-label">累计专注时间
+      <output class="time" id="time" aria-live="off">00:00:00</output>
+    </p>
+    <p class="score">模型分数 <span id="score">—</span></p>
+    <button id="start" type="button" disabled>开始计时</button>
+  </main>
+  <script>
+    const dashboard = document.getElementById('dashboard');
+    const stateLabel = document.getElementById('state');
+    const sourceLabel = document.getElementById('source');
+    const timeLabel = document.getElementById('time');
+    const scoreLabel = document.getElementById('score');
+    const startButton = document.getElementById('start');
+    const states = { warming: '信号预热中', focus: '专注', relax: '放松', disconnected: '信号中断' };
+    let actionPending = false;
+    let actionVersion = 0;
+
+    function setText(element, value) {
+      if (element.textContent !== value) element.textContent = value;
+    }
+
+    function display(status) {
+      dashboard.dataset.state = status.state;
+      let current = states[status.state];
+      let source = 'Arduino 串口';
+      if (status.source === 'replay') {
+        source = 'CSV 回放';
+        if (status.source_status === 'ready') current = '等待回放';
+        if (status.source_status === 'finished') current = '回放结束';
+      }
+      setText(stateLabel, current);
+      setText(sourceLabel, source);
+      const seconds = Math.floor(status.focus_seconds);
+      const segments = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60];
+      setText(timeLabel, segments.map(part => String(part).padStart(2, '0')).join(':'));
+      setText(scoreLabel, status.score == null ? '—' : status.score.toFixed(3));
+      const finished = status.source_status === 'finished';
+      const buttonLabel = status.started ? '重新计时' : '开始计时';
+      setText(startButton, finished ? '计时结束' : buttonLabel);
+      startButton.disabled = actionPending || finished;
+    }
+
+    function unavailable() {
+      dashboard.dataset.state = 'disconnected';
+      setText(stateLabel, '连接中断');
+      setText(sourceLabel, '等待本机服务恢复');
+      setText(scoreLabel, '—');
+      startButton.disabled = true;
+    }
+
+    async function fetchStatus(path, options) {
+      const response = await fetch(path, { ...options, signal: AbortSignal.timeout(3000) });
+      if (!response.ok) throw new Error(response.status);
+      return response.json();
+    }
+
+    async function poll() {
+      const version = actionVersion;
+      if (!actionPending) {
+        try {
+          const status = await fetchStatus('/api/status');
+          if (version === actionVersion) display(status);
+        } catch {
+          if (version === actionVersion) unavailable();
+        }
+      }
+      setTimeout(poll, 250);
+    }
+
+    startButton.addEventListener('click', async () => {
+      actionPending = true;
+      actionVersion += 1;
+      startButton.disabled = true;
+      try {
+        const status = await fetchStatus('/api/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        actionPending = false;
+        display(status);
+      } catch {
+        actionPending = false;
+        unavailable();
+      }
+    });
+    poll();
+  </script>
+</body>
+</html>
