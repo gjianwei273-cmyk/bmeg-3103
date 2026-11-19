@@ -3,144 +3,476 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>冥想计时</title>
+  <title>冥想计时 · EEG</title>
   <style>
     :root {
       color-scheme: dark;
       font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
-      background: #101925;
-      color: #f1f5f8;
+      background: #0b141e;
+      color: #eef5f7;
+      --muted: #a7bac7;
+      --border: #293e4b;
+      --panel: #11212c;
+      --signal: #72e0c1;
+      --threshold: #efbd7b;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 1rem;
-      background: radial-gradient(ellipse at 50% 0%, #28364c, transparent 70%);
+      background: radial-gradient(ellipse at 44% 0%, #18303c, transparent 70%);
     }
-    main {
-      --accent: #a8b9cb;
-      display: grid;
-      justify-items: center;
-      gap: 1.5rem;
-      width: min(100%, 31rem);
-      padding: clamp(1.4rem, 5vw, 2.75rem);
-      background: #172332;
-      border: 1px solid #33445a;
-      border-radius: 1.5rem;
-      text-align: center;
-      box-shadow: 0 1.5rem 4rem #070e1760;
-    }
-    main[data-state="focus"] { --accent: #92dfbb; }
-    main[data-state="relax"] { --accent: #a8c9f5; }
-    main[data-state="warming"] { --accent: #ecd3a0; }
+    main { width: min(100%, 74rem); margin: auto; padding: clamp(1rem, 5vw, 4rem); }
     h1, h2, p { margin: 0; }
-    h1 { font-size: 1.15rem; font-weight: 650; }
-    .indicator {
-      display: grid;
-      place-items: center;
-      width: clamp(10.25rem, 47vw, 13rem);
-      aspect-ratio: 1;
-      border: 1px solid var(--accent);
-      border-radius: 50%;
-      color: var(--accent);
-      box-shadow: inset 0 0 2rem #0f1b28, 0 0 0 .5rem #1d2b3d;
-      transition: color .25s ease, border-color .25s ease;
+    header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.75rem; }
+    .header-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
+    .header-controls select { width: auto; min-height: 2rem; font-size: .82rem; }
+    .prediction { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .55rem; color: var(--muted); font-size: .82rem; }
+    .prediction-state { border: 1px solid var(--border); border-radius: 2rem; padding: .23rem .55rem; }
+    .prediction-state[data-prediction="focus"] { color: var(--signal); }
+    .prediction-state[data-prediction="relax"], .relax-time { color: #9fc6ef; }
+    h1 { font-size: clamp(1.65rem, 4vw, 2.65rem); letter-spacing: -.045em; }
+    .source { margin-top: .35rem; color: var(--muted); font-size: .88rem; }
+    .status {
+      --status: #bac9d4;
+      display: flex; align-items: center; gap: .55rem; padding: .53rem .75rem;
+      border: 1px solid var(--border); border-radius: 2rem;
+      color: var(--status); background: #10202b; font-size: .85rem; white-space: nowrap;
     }
-    .indicator h2 { font-size: clamp(1.25rem, 6vw, 1.75rem); font-weight: 650; }
-    #source { font-size: .9rem; color: #bdcbd9; }
-    .time {
-      display: block;
-      margin: .25rem 0 0;
-      font-size: clamp(2.5rem, 13vw, 3.65rem);
-      line-height: 1.1;
-      font-variant-numeric: tabular-nums;
-      font-weight: 620;
-      letter-spacing: -.04em;
+    .status::before { content: ""; width: .48rem; height: .48rem; border-radius: 50%; background: currentColor; }
+    [data-state="focus"] .status { --status: var(--signal); }
+    [data-state="relax"] .status { --status: #9fc6ef; }
+    [data-state="warming"] .status { --status: var(--threshold); }
+    .source-panel { margin-bottom: 1rem; }
+    .source-controls { display: grid; grid-template-columns: minmax(8rem, .8fr) minmax(0, 2fr) auto auto; align-items: end; gap: .65rem; margin-top: .8rem; }
+    .source-controls label { display: grid; min-width: 0; gap: .35rem; color: var(--muted); font-size: .82rem; }
+    select, .source-controls button {
+      width: 100%; min-width: 0; min-height: 2.6rem; margin: 0;
+      border: 1px solid #395462; border-radius: .55rem; padding: .48rem .65rem;
+      background: #1c3340; color: #eef5f7; font: inherit;
     }
-    .time-label, .score { color: #bdcbd9; font-size: .9rem; }
-    #score { color: #f1f5f8; font-variant-numeric: tabular-nums; }
+    .source-controls button { width: auto; font-size: .85rem; white-space: nowrap; }
+    .source-controls .connect { background: var(--signal); color: #10232a; border-color: transparent; }
+    select:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .source-note { color: var(--muted); font-size: .82rem; margin-top: .7rem; min-height: 1.25em; overflow-wrap: anywhere; }
+    .source-note[data-error="true"] { color: var(--threshold); }
+    @media (max-width: 720px) {
+      .source-controls { grid-template-columns: 1fr 1fr; }
+      .source-controls label { grid-column: 1 / -1; }
+      .source-controls button { grid-row: 3; }
+    }
+    .layout { display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(15rem, 1fr); gap: 1rem; align-items: start; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 1rem; padding: clamp(1rem, 3vw, 1.55rem); }
+    .panel-heading { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+    h2 { font-size: 1rem; font-weight: 650; }
+    .score { font-size: 1.42rem; color: var(--signal); font-weight: 650; }
+    .score, .timer-value, .y-axis, .x-axis { font-variant-numeric: tabular-nums; }
+    .plot { display: grid; grid-template-columns: 2rem minmax(0, 1fr); margin-top: 1.65rem; }
+    .y-axis { display: flex; flex-direction: column; justify-content: space-between; position: relative; padding-right: .55rem; }
+    .axis { color: var(--muted); font-size: .75rem; }
+    .y-axis span { line-height: 0; text-align: right; }
+    .graph { position: relative; min-width: 0; }
+    .graph svg { display: block; width: 100%; height: clamp(10rem, 28vw, 17rem); overflow: visible; }
+    .graph path, .graph line { vector-effect: non-scaling-stroke; }
+    .gridlines { fill: none; stroke: var(--border); stroke-width: 1; }
+    #threshold-line { stroke: var(--threshold); stroke-width: 1.3; stroke-dasharray: 5 5; }
+    #series { fill: none; stroke: var(--signal); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+    .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .chart-empty span { padding: .38rem .65rem; border-radius: .35rem; background: var(--panel); color: var(--muted); font-size: .85rem; }
+    [hidden] { display: none !important; }
+    .x-axis { grid-column: 2; display: flex; justify-content: space-between; margin-top: .62rem; }
+    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem 1.15rem; margin-top: 1.4rem; font-size: .81rem; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+    .legend span::before { content: ""; width: 1.1rem; border-top: 2px solid var(--signal); }
+    .legend .reference::before { border-top: 2px dashed var(--threshold); }
+    .timer { margin-top: 1.15rem; }
+    .timer + .timer { border-top: 1px solid var(--border); padding-top: 1.05rem; }
+    .timer-label { color: var(--muted); font-size: .85rem; }
+    .timer-value { display: block; margin-top: .2rem; font-size: clamp(1.85rem, 4.5vw, 2.65rem); line-height: 1.15; letter-spacing: -.045em; font-weight: 620; }
+    .focus-time { color: var(--signal); }
     button {
-      width: min(100%, 15rem);
-      min-height: 2.8rem;
-      padding: .6rem 1rem;
-      border: 0;
-      border-radius: .7rem;
-      background: #d1e0f4;
-      color: #182536;
-      font: inherit;
-      font-weight: 650;
-      cursor: pointer;
+      width: 100%; min-height: 2.8rem; padding: .65rem .85rem; margin-top: 1.45rem;
+      border: 1px solid transparent; border-radius: .55rem; background: var(--signal);
+      color: #10232a; font: inherit; font-weight: 650; cursor: pointer;
     }
-    button:hover:not(:disabled) { background: #e6f1ff; }
-    button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+    button:hover:not(:disabled) { filter: brightness(1.12); }
+    button[data-action="stop"] { color: #e4eef2; background: #1c3340; border-color: #395462; }
+    button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
     button:disabled { opacity: .55; cursor: default; }
-    @media (prefers-reduced-motion: reduce) { .indicator { transition: none; } }
+    @media (max-width: 720px) { .layout { grid-template-columns: minmax(0, 1fr); } }
   </style>
 </head>
 <body>
   <main id="dashboard" data-state="disconnected">
-    <h1>冥想计时</h1>
-    <div class="indicator">
-      <h2 id="state" role="status">正在连接</h2>
+    <header>
+      <div>
+        <h1 data-i18n="title">冥想计时</h1>
+        <p class="source" id="source" data-i18n="loadingService">正在连接本机服务</p>
+      </div>
+      <div class="header-controls">
+        <p class="status" id="state" role="status" data-i18n="loading">正在连接</p>
+        <select id="language" aria-label="界面语言">
+          <option value="zh-CN">中文</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </header>
+    <section class="panel source-panel" aria-labelledby="source-title">
+      <h2 id="source-title" data-i18n="sourceTitle">数据来源</h2>
+      <div class="source-controls">
+        <label><span data-i18n="sourceMode">模式</span>
+          <select id="source-mode">
+            <option value="serial" data-i18n="serialMode">Arduino 实时数据</option>
+            <option value="replay" data-i18n="replayMode">已有数据 · CSV 回放</option>
+          </select>
+        </label>
+        <label id="port-field"><span data-i18n="devicePort">设备串口</span> <select id="device-port"></select></label>
+        <label id="recording-field" hidden><span data-i18n="replayFile">回放文件</span> <select id="replay-file"></select></label>
+        <button id="refresh-sources" type="button" data-i18n="refresh">刷新串口</button>
+        <button class="connect" id="apply-source" type="button" disabled>连接 Arduino</button>
+      </div>
+      <p class="source-note" id="source-note" role="status"></p>
+    </section>
+    <div class="layout">
+      <section class="panel" aria-labelledby="chart-title">
+        <div class="panel-heading">
+          <h2 id="chart-title" data-i18n="chartTitle">实时 CNN 专注分数</h2>
+          <output class="score" id="score" aria-live="off">—</output>
+        </div>
+        <div class="prediction">
+          <span id="prediction-title" data-i18n="prediction">实时判定</span>
+          <strong id="prediction-state" class="prediction-state" role="status">—</strong>
+        </div>
+        <div class="plot">
+          <div class="y-axis axis" aria-hidden="true"><span>1.00</span><span>0.75</span><span>0.50</span><span>0.25</span><span>0</span></div>
+          <div class="graph">
+            <svg id="chart" viewBox="0 0 1000 240" preserveAspectRatio="none" role="img" aria-label="最近 60 秒的 CNN 专注分数，包含进入专注阈值参考线">
+              <path class="gridlines" d="M0 0H1000 M0 60H1000 M0 120H1000 M0 180H1000 M0 240H1000"/>
+              <line id="threshold-line" x1="0" x2="1000" hidden/>
+              <path id="series"/>
+            </svg>
+            <p class="chart-empty" id="chart-empty"><span data-i18n="waitingScore">等待 CNN 分数</span></p>
+          </div>
+          <div class="x-axis axis" aria-hidden="true"><span data-i18n="axisStart">−60 秒</span><span>−45</span><span>−30</span><span>−15</span><span data-i18n="axisNow">最新</span></div>
+        </div>
+        <div class="legend">
+          <span data-i18n="score">CNN 分数</span>
+          <span class="reference" id="threshold-label">进入专注阈值</span>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="round-title">
+        <h2 id="round-title">本轮练习</h2>
+        <p class="timer">
+          <span class="timer-label" data-i18n="elapsed">练习时长</span>
+          <output class="timer-value" id="elapsed" aria-live="off">00:00:00</output>
+        </p>
+        <p class="timer">
+          <span class="timer-label" data-i18n="focusTime">有效专注时长</span>
+          <output class="timer-value focus-time" id="time" aria-live="off">00:00:00</output>
+        </p>
+        <p class="timer">
+          <span class="timer-label" data-i18n="relaxTime">有效放松时长</span>
+          <output class="timer-value relax-time" id="relax-time" aria-live="off">00:00:00</output>
+        </p>
+        <button id="round-action" type="button" data-action="start" disabled>开始练习</button>
+      </section>
     </div>
-    <p id="source">正在连接本机服务</p>
-    <p class="time-label">累计专注时间
-      <output class="time" id="time" aria-live="off">00:00:00</output>
-    </p>
-    <p class="score">模型分数 <span id="score">—</span></p>
-    <button id="start" type="button" disabled>开始计时</button>
   </main>
   <script>
     const dashboard = document.getElementById('dashboard');
     const stateLabel = document.getElementById('state');
     const sourceLabel = document.getElementById('source');
-    const timeLabel = document.getElementById('time');
+    const roundTitle = document.getElementById('round-title');
+    const elapsedLabel = document.getElementById('elapsed');
+    const focusLabel = document.getElementById('time');
     const scoreLabel = document.getElementById('score');
-    const startButton = document.getElementById('start');
-    const states = { warming: '信号预热中', focus: '专注', relax: '放松', disconnected: '信号中断' };
+    const thresholdLabel = document.getElementById('threshold-label');
+    const thresholdLine = document.getElementById('threshold-line');
+    const series = document.getElementById('series');
+    const chartEmpty = document.getElementById('chart-empty');
+    const roundButton = document.getElementById('round-action');
+    const sourceMode = document.getElementById('source-mode');
+    const portField = document.getElementById('port-field');
+    const recordingField = document.getElementById('recording-field');
+    const portSelect = document.getElementById('device-port');
+    const recordingSelect = document.getElementById('replay-file');
+    const refreshButton = document.getElementById('refresh-sources');
+    const sourceButton = document.getElementById('apply-source');
+    const sourceNote = document.getElementById('source-note');
+    const relaxLabel = document.getElementById('relax-time');
+    const predictionTitle = document.getElementById('prediction-title');
+    const predictionLabel = document.getElementById('prediction-state');
+    const languageSelect = document.getElementById('language');
+    const messages = {
+      title: ["冥想计时","Meditation timer"],
+      sourceTitle: ["数据来源","Data source"],
+      sourceMode: ["模式","Mode"],
+      serialMode: ["Arduino 实时数据","Live Arduino"],
+      replayMode: ["已有数据 · CSV 回放","Recorded data · CSV replay"],
+      devicePort: ["设备串口","Serial port"],
+      replayFile: ["回放文件","Recording"],
+      refresh: ["刷新串口","Refresh ports"],
+      connect: ["连接 Arduino","Connect Arduino"],
+      disconnect: ["断开 Arduino","Disconnect Arduino"],
+      load: ["载入回放","Load recording"],
+      chartTitle: ["实时 CNN 专注分数","Live CNN focus score"],
+      chartAria: ["最近 60 秒的 CNN 专注分数，包含进入专注阈值参考线","CNN focus score over the last 60 seconds, with a focus threshold line"],
+      waitingScore: ["等待 CNN 分数","Waiting for CNN scores"],
+      axisStart: ["−60 秒","−60 sec"],
+      axisNow: ["最新","Now"],
+      score: ["CNN 分数","CNN score"],
+      threshold: ["进入专注阈值","Focus threshold"],
+      round: ["本轮练习","Current session"],
+      results: ["本轮结果","Session results"],
+      elapsed: ["练习时长","Session duration"],
+      focusTime: ["有效专注时长","Focus time"],
+      relaxTime: ["有效放松时长","Relax time"],
+      start: ["开始练习","Start session"],
+      stop: ["结束练习","End session"],
+      restart: ["开始新一轮","Start new session"],
+      prediction: ["实时判定","Live prediction"],
+      finalPrediction: ["结束时判定","Prediction at end"],
+      focus: ["专注","Focus"],
+      relax: ["放松","Relax"],
+      warming: ["信号预热中","Warming up"],
+      disconnected: ["信号中断","Signal lost"],
+      waitingSignal: ["等待有效信号","Waiting for signal"],
+      waitingReplay: ["等待回放","Ready to replay"],
+      finishedReplay: ["回放结束","Replay finished"],
+      notConnected: ["未连接 Arduino","Arduino disconnected"],
+      ended: ["练习结束","Session ended"],
+      loading: ["正在连接","Connecting"],
+      loadingService: ["正在连接本机服务","Connecting to local service"],
+      unavailable: ["连接中断","Connection lost"],
+      waitingService: ["等待本机服务恢复","Waiting for local service"],
+      replaySource: ["数据来源 · CSV 回放","Source · CSV replay"],
+      serialSource: ["数据来源 · Arduino 串口","Source · Arduino serial"],
+      noPorts: ["未检测到串口","No serial ports detected"],
+      noFiles: ["没有可回放的录制","No recordings available"],
+      replayReady: ["已载入。每轮从录制开头回放。","Recording loaded. Each session plays from the beginning."],
+      pickReplay: ["选择录制并载入后开始。","Select and load a recording to start."],
+      noCsv: ["未找到项目中的 EEG 录制 CSV。","No EEG recordings found in the project."],
+      connecting: ["正在打开串口","Opening serial port"],
+      connected: ["串口已连接","Serial port connected"],
+      retrying: ["串口不可用，正在重连","Serial port unavailable. Retrying."],
+      missingSerial: ["Arduino 模式需要安装 pyserial。CSV 回放可以直接使用。","Install pyserial for Arduino mode. CSV replay is available."],
+      plugArduino: ["插入 Arduino 后点击刷新串口。","Plug in the Arduino and click Refresh ports."],
+      serviceError: ["本机服务暂时不可用。","Local service is temporarily unavailable."],
+      requestError: ["操作失败，请重试。","The request could not be completed."],
+      language: ["界面语言","Interface language"],
+    };
+    const englishErrors = {
+      '请先结束本轮练习。': 'End the current session first.',
+      '请选择列表中的回放文件。': 'Select a recording from the list.',
+      'Arduino 模式需要安装 pyserial。': 'Install pyserial to use Arduino mode.',
+      '找不到该串口，请刷新串口列表。': 'Port not found. Refresh the port list.',
+      '请先连接 Arduino。': 'Connect the Arduino first.',
+      '无法读取本机串口列表。': 'Could not read the serial port list.',
+      '无法打开选定的数据来源。': 'Could not open the selected data source.'
+    };
+    let language = 'zh-CN';
+    let serviceOffline = false;
+    function t(key) {
+      return messages[key][language === 'en' ? 1 : 0];
+    }
+
+    function requestErrorMessage(message) {
+      if (message === 'serviceError' || message === 'Failed to fetch') return t('serviceError');
+      return language === 'en' ? englishErrors[message] || t('requestError') : message;
+    }
+
+    function applyLanguage() {
+      document.documentElement.lang = language;
+      document.title = t('title');
+      languageSelect.setAttribute('aria-label', t('language'));
+      document.getElementById('chart').setAttribute('aria-label', t('chartAria'));
+      for (const element of document.querySelectorAll('[data-i18n]')) {
+        setText(element, t(element.dataset.i18n));
+      }
+      renderOptions();
+      if (currentStatus && !serviceOffline) {
+        display(currentStatus);
+      } else {
+        setText(roundTitle, t('round'));
+        setText(roundButton, t('start'));
+        setText(thresholdLabel, t('threshold'));
+        updateControls();
+        if (serviceOffline) unavailable();
+      }
+    }
+    const chartWidth = 1000;
+    const chartHeight = 240;
     let actionPending = false;
     let actionVersion = 0;
+    let currentStatus = null;
+    let availableSources = null;
+    let actionError = '';
+    let loadingSources = false;
+
+    function fillOptions(select, choices, preferred, placeholder) {
+      const previous = select.value;
+      const options = choices.map(({ id, name }) => new Option(name, id));
+      select.replaceChildren(...(options.length ? options : [new Option(placeholder, '')]));
+      if (choices.some(item => item.id === previous)) select.value = previous;
+      else if (choices.some(item => item.id === preferred)) select.value = preferred;
+    }
+
+    function renderOptions() {
+      if (!availableSources) return;
+      const ports = [...availableSources.ports];
+      const active = currentStatus?.source === 'serial' ? currentStatus.source_id : null;
+      if (active && !ports.some(port => port.id === active)) ports.push({ id: active, name: active });
+      fillOptions(portSelect, ports.map(({id, name}) => ({
+        id, name: name && name !== id && name !== 'n/a' ? id + ' · ' + name : id
+      })), active, t('noPorts'));
+      fillOptions(recordingSelect, availableSources.recordings,
+        currentStatus?.source === 'replay' ? currentStatus.source_id : null, t('noFiles'));
+    }
+
+    function updateControls() {
+      const replay = sourceMode.value === 'replay';
+      const selectedId = replay ? recordingSelect.value : portSelect.value;
+      const active = !!selectedId && currentStatus?.source === sourceMode.value &&
+        currentStatus.source_id === selectedId;
+      const running = currentStatus?.round_status === 'running';
+      const locked = actionPending || !currentStatus || running;
+      portField.hidden = replay;
+      recordingField.hidden = !replay;
+      refreshButton.hidden = replay;
+      refreshButton.disabled = locked || loadingSources;
+      sourceMode.disabled = locked;
+      portSelect.disabled = locked || loadingSources;
+      recordingSelect.disabled = locked || loadingSources;
+      setText(sourceButton, t(replay ? 'load' : active ? 'disconnect' : 'connect'));
+      sourceButton.disabled = locked || loadingSources || !selectedId || (replay && active);
+      const ready = active && (replay || currentStatus.source_status === 'connected');
+      roundButton.disabled = actionPending || !currentStatus || (!ready && !running);
+
+      let note = '';
+      if (replay) {
+        note = t(active ? 'replayReady' : 'pickReplay');
+        if (availableSources && !selectedId) note = t('noCsv');
+      } else if (currentStatus?.source === 'serial' && currentStatus.source_id) {
+        note = t(currentStatus.source_status) + ' · ' + currentStatus.source_id;
+      } else if (availableSources && !availableSources.serial_available) {
+        note = t('missingSerial');
+      } else if (availableSources && !selectedId) {
+        note = t('plugArduino');
+      }
+      sourceNote.dataset.error = String(!!actionError);
+      setText(sourceNote, actionError ? requestErrorMessage(actionError) : note);
+    }
+
+    async function refreshSources() {
+      loadingSources = true;
+      actionError = '';
+      updateControls();
+      try {
+        availableSources = await fetchStatus('/api/sources');
+        renderOptions();
+      } catch (error) {
+        actionError = error.message;
+      } finally {
+        loadingSources = false;
+        updateControls();
+      }
+    }
 
     function setText(element, value) {
       if (element.textContent !== value) element.textContent = value;
     }
 
-    function display(status) {
-      dashboard.dataset.state = status.state;
-      let current = states[status.state];
-      let source = 'Arduino 串口';
-      if (status.source === 'replay') {
-        source = 'CSV 回放';
-        if (status.source_status === 'ready') current = '等待回放';
-        if (status.source_status === 'finished') current = '回放结束';
-      }
-      setText(stateLabel, current);
-      setText(sourceLabel, source);
-      const seconds = Math.floor(status.focus_seconds);
+    function formatTime(duration) {
+      const seconds = Math.floor(duration);
       const segments = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60];
-      setText(timeLabel, segments.map(part => String(part).padStart(2, '0')).join(':'));
-      setText(scoreLabel, status.score == null ? '—' : status.score.toFixed(3));
+      return segments.map(part => String(part).padStart(2, '0')).join(':');
+    }
+
+    function drawChart(status) {
+      const y = score => (1 - score) * chartHeight;
+      thresholdLine.setAttribute('y1', y(status.threshold));
+      thresholdLine.setAttribute('y2', y(status.threshold));
+      thresholdLine.removeAttribute('hidden');
+      setText(thresholdLabel, `${t('threshold')} ${status.threshold.toFixed(2)}`);
+      const path = [];
+      let previous = false;
+      for (const [instant, score] of status.scores) {
+        if (score === null) {
+          previous = false;
+          continue;
+        }
+        const x = chartWidth * (1 - (status.chart_seconds - instant) / status.chart_window_seconds);
+        if (previous) {
+          path.push(`L${x} ${y(score)}`);
+        } else {
+          path.push(`M${x} ${y(score)} h-0.01`);
+        }
+        previous = true;
+      }
+      series.setAttribute('d', path.join(' '));
+      chartEmpty.hidden = path.length > 0;
+    }
+
+    function display(status) {
+      if (!currentStatus) {
+        sourceMode.value = status.source;
+        currentStatus = status;
+        renderOptions();
+        if (status.source_id !== null) {
+          if (status.source === 'serial') portSelect.value = status.source_id;
+          else recordingSelect.value = status.source_id;
+        }
+      }
+      currentStatus = status;
+      serviceOffline = false;
+      dashboard.dataset.state = status.state;
+      const replay = status.source === 'replay';
       const finished = status.source_status === 'finished';
-      const buttonLabel = status.started ? '重新计时' : '开始计时';
-      setText(startButton, finished ? '计时结束' : buttonLabel);
-      startButton.disabled = actionPending || finished;
+      let state = status.state;
+      if (replay && status.source_status === 'ready') state = 'waitingReplay';
+      if (finished) state = 'finishedReplay';
+      if (!replay && status.state === 'disconnected' && !status.scores.length) state = 'waitingSignal';
+      if (status.source_status === 'idle') state = 'notConnected';
+      if (status.round_status === 'ended' && !finished) state = 'ended';
+      setText(stateLabel, t(state));
+      setText(sourceLabel, t(replay ? 'replaySource' : 'serialSource') +
+        (!replay && status.source_id ? ' · ' + status.source_id : ''));
+      setText(elapsedLabel, formatTime(status.elapsed_seconds));
+      setText(focusLabel, formatTime(status.focus_seconds));
+      setText(relaxLabel, formatTime(status.relax_seconds));
+      setText(scoreLabel, status.score === null ? '—' : status.score.toFixed(3));
+      drawChart(status);
+
+      const running = status.round_status === 'running';
+      const ended = status.round_status === 'ended';
+      roundButton.dataset.action = running ? 'stop' : 'start';
+      const prediction = status.prediction_state;
+      predictionLabel.dataset.prediction = prediction;
+      setText(predictionTitle, t(ended ? 'finalPrediction' : 'prediction'));
+      setText(predictionLabel, status.score === null && prediction !== 'warming' ? '—' : t(prediction));
+      setText(roundTitle, t(ended ? 'results' : 'round'));
+      setText(roundButton, t(running ? 'stop' : ended ? 'restart' : 'start'));
+      updateControls();
     }
 
     function unavailable() {
+      serviceOffline = true;
       dashboard.dataset.state = 'disconnected';
-      setText(stateLabel, '连接中断');
-      setText(sourceLabel, '等待本机服务恢复');
-      setText(scoreLabel, '—');
-      startButton.disabled = true;
+      setText(stateLabel, t('unavailable'));
+      setText(sourceLabel, t('waitingService'));
+      if (currentStatus?.round_status !== 'ended') {
+        setText(scoreLabel, '—');
+        setText(predictionLabel, '—');
+      }
+      roundButton.disabled = true;
+      sourceButton.disabled = true;
     }
 
     async function fetchStatus(path, options) {
       const response = await fetch(path, { ...options, signal: AbortSignal.timeout(3000) });
-      if (!response.ok) throw new Error(response.status);
-      return response.json();
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) throw new Error(payload?.error || 'serviceError');
+      return payload;
     }
 
     async function poll() {
@@ -156,22 +488,51 @@
       setTimeout(poll, 250);
     }
 
-    startButton.addEventListener('click', async () => {
+    async function perform(path, payload = {}) {
       actionPending = true;
       actionVersion += 1;
-      startButton.disabled = true;
+      actionError = '';
+      updateControls();
       try {
-        const status = await fetchStatus('/api/start', {
+        const status = await fetchStatus(path, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
         actionPending = false;
         display(status);
-      } catch {
+      } catch (error) {
         actionPending = false;
-        unavailable();
+        actionError = error.message;
+        updateControls();
       }
+    }
+
+    sourceButton.addEventListener('click', () => {
+      const mode = sourceMode.value;
+      const id = mode === 'replay' ? recordingSelect.value : portSelect.value;
+      const disconnect = mode === 'serial' && currentStatus.source === mode && currentStatus.source_id === id;
+      perform('/api/source', { mode, id: disconnect ? null : id });
     });
+    roundButton.addEventListener('click', () => perform('/api/' + roundButton.dataset.action));
+    for (const select of [sourceMode, portSelect, recordingSelect]) {
+      select.addEventListener('change', () => {
+        actionError = '';
+        updateControls();
+      });
+    }
+    refreshButton.addEventListener('click', refreshSources);
+    try {
+      if (localStorage.getItem('meditation-language') === 'en') language = 'en';
+    } catch {}
+    languageSelect.value = language;
+    languageSelect.addEventListener('change', () => {
+      language = languageSelect.value;
+      try { localStorage.setItem('meditation-language', language); } catch {}
+      applyLanguage();
+    });
+    applyLanguage();
+    refreshSources();
     poll();
   </script>
 </body>

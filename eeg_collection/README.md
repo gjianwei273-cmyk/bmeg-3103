@@ -229,12 +229,23 @@ python -m eeg_collection.training.cnn.focus_train --data-dir eeg_collection/data
 
 ### 启动本地网页
 
-把下方路径换成训练命令打印的模型目录。使用串口前先关闭正在占用它的采集脚本或串口监视器。
+把下方路径换成训练命令打印的模型目录，在项目根目录运行：
 
 ```powershell
-python -m eeg_collection.training.cnn.focus_demo --model eeg_collection/training/cnn/reports/focus_existing_data_final --port COM4
-python -m eeg_collection.training.cnn.focus_demo --model eeg_collection/training/cnn/reports/focus_existing_data_final --replay eeg_collection/data_collecting/data/half_half/20261105_183912_45e58863.csv
+python -m eeg_collection.training.cnn.focus_demo --model eeg_collection/training/cnn/reports/focus_existing_data_final
 ```
 
-浏览器打开 [本地计时页面](http://127.0.0.1:8765)。实时模式先用串口数据预热，按开始后累计。
-回放模式按开始后用录制的时间间隔播放。信号超过间隔限制时暂停计时，恢复后重新填充窗口。
+打开 [本地计时页面](http://127.0.0.1:8765)，在「数据来源」选择：
+
+- **Arduino 实时数据**：安装采集依赖（包含 pyserial）。插入 Arduino，关闭占用串口的程序，
+  点击「刷新串口」，选中设备并点击「连接 Arduino」。
+- **已有数据 · CSV 回放**：选择采集目录中的录制，点击「载入回放」。也可通过启动参数
+  `--replay <CSV 路径>` 加入其他录制并预先选中它。`--port COM4` 可预先连接指定串口。
+
+曲线滚动显示最近 60 秒的 CNN 专注分数（0–1）。虚线是模型配置的进入专注阈值。
+曲线旁显示 CNN 当前判定的专注或放松状态。预热和信号中断期间曲线留空。
+实时模式恢复信号后重新填充推理窗口。右上角可切换中文和英文。
+
+点击「开始练习」启动本轮。练习总时长持续累计，专注和放松时长分别按稳定的 CNN 判定累计。
+预热和断流只计入练习总时长。结束时冻结曲线、判定和三个时长。每次开始新一轮都会重新绘图。CSV 每轮从录制开头播放，
+播完自动结束本轮。请先结束当前练习再切换数据源。

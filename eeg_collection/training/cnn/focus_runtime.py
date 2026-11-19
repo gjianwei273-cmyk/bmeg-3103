@@ -54,19 +54,20 @@ class FocusTimer:
         self.state = 'warming'
         self.score = None
         self.time = None
-        self.total = 0.
+        self.seconds = {'focus': 0., 'relax': 0.}
         self.pending = 0
 
     def snapshot(self):
-        return dict(state=self.state, score=self.score, focus_seconds=self.total)
+        return dict(state=self.state, score=self.score, focus_seconds=self.seconds['focus'],
+                    relax_seconds=self.seconds['relax'])
 
     def poll(self, timestamp_seconds):
         now = timestamp_seconds
         if not math.isfinite(now) or (self.time is not None and now < self.time):
             raise ValueError('expected monotonic finite timestamps')
         last = self.window.last_frame
-        if self.state == 'focus' and last is not None:
-            self.total += min(now, last + self.window.max_gap) - self.time
+        if last is not None and self.state in self.seconds:
+            self.seconds[self.state] += min(now, last + self.window.max_gap) - self.time
         self.time = now
         if self.window.expire(now):
             self.disconnect()
@@ -105,5 +106,5 @@ class FocusTimer:
 
     def reset_counter(self, timestamp_seconds):
         self.poll(timestamp_seconds)
-        self.total = 0.
+        self.seconds = {'focus': 0., 'relax': 0.}
         return self.snapshot()
